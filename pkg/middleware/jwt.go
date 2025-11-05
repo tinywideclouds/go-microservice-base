@@ -140,6 +140,72 @@ func NewJWKSAuthMiddleware(jwksURL string) (func(http.Handler) http.Handler, err
 	}, nil
 }
 
+func NewJWKSWebsocketAuthMiddleware(jwksURL string) (func(http.Handler) http.Handler, error) {
+	// Create a new, *separate* JWK cache for this middleware.
+	// This avoids refactoring and keeps the changes isolated.
+	cache := jwk.NewCache(context.Background())
+	err := cache.Register(jwksURL, jwk.WithRefreshInterval(15*time.Minute))
+	if err != nil {
+		return nil, fmt.Errorf("failed to register JWKS URL for WebSocket: %w", err)
+	}
+
+	// Pre-fetch the keys on startup, just like the original middleware.
+	_, err = cache.Refresh(context.Background(), jwksURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to perform initial JWKS fetch for WebSocket: %w", err)
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// --- The *ONLY* logic change is here ---
+			tokenString := r.Header.Get("Sec-WebSocket-Protocol")
+			if tokenString == "" {
+				response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Missing Sec-WebSocket-Protocol header")
+				return
+			}
+			// --- End logic change ---
+
+			keyFunc := func(token *jwt.Token) (interface{}, error) {
+				keySet, err := cache.Get(r.Context(), jwksURL)
+				if err != nil {
+					return nil, fmt.Errorf("failed to get key set from cache: %w", err)
+				}
+				keyID, ok := token.Header["kid"].(string)
+				if !ok {
+					return nil, fmt.Errorf("token missing 'kid' header")
+				}
+				key, found := keySet.LookupKeyID(keyID)
+				if !found {
+					return nil, fmt.Errorf("key with ID '%s' not found in JWKS", keyID)
+				}
+				var rawKey interface{}
+				if err := key.Raw(&rawKey); err != nil {
+					return nil, fmt.Errorf("failed to get raw public key: %w", err)
+				}
+				return rawKey, nil
+			}
+
+			token, err := jwt.Parse(tokenString, keyFunc, jwt.WithValidMethods([]string{"RS256"}))
+			if err != nil {
+				response.WriteJSONError(w, http.StatusUnauthorized, fmt.Sprintf("Unauthorized: Invalid token (%s)", err.Error()))
+				return
+			}
+
+			if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+				userID, ok := claims["sub"].(string)
+				if !ok || userID == "" {
+					response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Invalid user ID in token")
+					return
+				}
+				ctx := ContextWithUserID(r.Context(), userID)
+				next.ServeHTTP(w, r.WithContext(ctx))
+			} else {
+				response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Invalid token claims")
+			}
+		})
+	}, nil
+}
+
 // DEPRECATED: NewLegacySharedSecretAuthMiddleware uses a symmetric HS256 shared secret for JWT validation.
 // This pattern is less secure as it requires sharing the secret with all services.
 // It is retained for backward compatibility only and should NOT be used for new services.

@@ -153,6 +153,83 @@ func createTestHS256Token(userID, secret string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
+// In: go-microservice-base/pkg/middleware/jwt_test.go
+
+// ... (keep all your existing tests like TestJWKSAuthMiddleware) ...
+
+// --- ADD THIS NEW TEST FUNCTION ---
+func TestJWKSWebsocketAuthMiddleware(t *testing.T) {
+	// 1. Generate a real RSA key pair for this test run.
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	// 2. Start a mock server to act as our JWKS endpoint.
+	mockServer := newMockJWKSServer(t, testKeyID, &privateKey.PublicKey)
+	defer mockServer.Close()
+
+	// 3. Create the *NEW* middleware, pointing it to our mock server.
+	wsMiddleware, err := middleware.NewJWKSWebsocketAuthMiddleware(mockServer.URL)
+	require.NoError(t, err, "WebSocket middleware should be created successfully")
+
+	// 4. Create the dummy handler
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := middleware.GetUserIDFromContext(r.Context())
+		require.True(t, ok)
+		require.Equal(t, "user-123", userID)
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, "OK")
+	})
+	protectedHandler := wsMiddleware(testHandler)
+
+	t.Run("Success - Valid RS256 Token in Protocol", func(t *testing.T) {
+		token, err := createTestRS256Token("user-123", testKeyID, privateKey)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		// --- THE ONLY CHANGE IS HERE ---
+		req.Header.Set("Sec-WebSocket-Protocol", token)
+		rr := httptest.NewRecorder()
+
+		protectedHandler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusOK, rr.Code)
+	})
+
+	t.Run("Failure - Token signed with wrong key", func(t *testing.T) {
+		anotherPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		require.NoError(t, err)
+		token, err := createTestRS256Token("user-123", testKeyID, anotherPrivateKey)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		// --- THE ONLY CHANGE IS HERE ---
+		req.Header.Set("Sec-WebSocket-Protocol", token)
+		rr := httptest.NewRecorder()
+
+		protectedHandler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	})
+
+	t.Run("Failure - No Protocol Header", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rr := httptest.NewRecorder()
+
+		protectedHandler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+		assert.Contains(t, rr.Body.String(), "Missing Sec-WebSocket-Protocol header")
+	})
+
+	t.Run("Failure - Invalid Token String", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		// --- THE ONLY CHANGE IS HERE ---
+		req.Header.Set("Sec-WebSocket-Protocol", "not-a-real-token")
+		rr := httptest.NewRecorder()
+
+		protectedHandler.ServeHTTP(rr, req)
+		assert.Equal(t, http.StatusUnauthorized, rr.Code)
+		assert.Contains(t, rr.Body.String(), "token is malformed")
+	})
+}
+
 func TestLegacySharedSecretAuthMiddleware(t *testing.T) {
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := middleware.GetUserIDFromContext(r.Context())
