@@ -19,6 +19,10 @@ type contextKey string
 // userContextKey is the key used to store the authenticated user's ID from the JWT.
 const userContextKey contextKey = "userID"
 
+type JWTSigningMethod string
+
+const RSA256 JWTSigningMethod = "RS256"
+
 // JWKSManager defines the interface for a key set manager that can be used
 // for manual token validation in non-HTTP contexts (e.g., WebSockets).
 type JWKSManager jwk.Set

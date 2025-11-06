@@ -3,9 +3,8 @@ package response
 
 import (
 	"encoding/json"
-	"log/slog" // IMPORTED
+	"log/slog"
 	"net/http"
-	// "github.com/rs/zerolog/log" // REMOVED
 )
 
 // APIError represents a standard JSON error response.

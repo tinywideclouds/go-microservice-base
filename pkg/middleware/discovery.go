@@ -9,15 +9,15 @@ import (
 
 // OIDCDiscoveryConfig holds the fields we care about from an identity service's metadata.
 type OIDCDiscoveryConfig struct {
-	Issuer        string   `json:"issuer"`
-	JWKS_URI      string   `json:"jwks_uri"`
-	SupportedAlgs []string `json:"id_token_signing_alg_values_supported"`
+	Issuer        string             `json:"issuer"`
+	JWKS_URI      string             `json:"jwks_uri"`
+	SupportedAlgs []JWTSigningMethod `json:"id_token_signing_alg_values_supported"`
 }
 
 // DiscoverAndValidateJWTConfig fetches metadata from an OIDC-compatible discovery endpoint,
 // validates that a required JWT signing algorithm is supported, and returns the discovered JWKS URI.
 // This is a critical startup check for any microservice acting as a resource server.
-func DiscoverAndValidateJWTConfig(identityServiceURL string, requiredAlg string, logger *slog.Logger) (string, error) {
+func DiscoverAndValidateJWTConfig(identityServiceURL string, requiredAlg JWTSigningMethod, logger *slog.Logger) (string, error) {
 	logger.Info("Discovering configuration from identity service", "identity_service_url", identityServiceURL)
 	metadataURL := fmt.Sprintf("%s/.well-known/oauth-authorization-server", identityServiceURL)
 

@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	// "github.com/rs/zerolog" // REMOVED
 )
 
 // BaseConfig holds common configuration fields for all services.

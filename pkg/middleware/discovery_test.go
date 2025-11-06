@@ -1,4 +1,4 @@
-package middleware
+package middleware_test
 
 import (
 	"io"
@@ -9,6 +9,7 @@ import (
 
 	// "github.com/rs/zerolog" // REMOVED
 	"github.com/stretchr/testify/require"
+	"github.com/tinywideclouds/go-microservice-base/pkg/middleware"
 )
 
 func TestDiscoverAndValidateJWTConfig(t *testing.T) {
@@ -23,7 +24,7 @@ func TestDiscoverAndValidateJWTConfig(t *testing.T) {
 	testCases := []struct {
 		name              string
 		mockServerHandler http.HandlerFunc
-		requiredAlg       string
+		requiredAlg       middleware.JWTSigningMethod
 		expectErr         bool
 		expectedJWKSURI   string
 	}{
@@ -91,7 +92,7 @@ func TestDiscoverAndValidateJWTConfig(t *testing.T) {
 			defer server.Close()
 
 			// Call the function under test, pointing it at our mock server.
-			jwksURI, err := DiscoverAndValidateJWTConfig(server.URL, tc.requiredAlg, logger) // CHANGED
+			jwksURI, err := middleware.DiscoverAndValidateJWTConfig(server.URL, tc.requiredAlg, logger) // CHANGED
 
 			// Use testify/require for clean and readable assertions.
 			if tc.expectErr {
@@ -106,7 +107,7 @@ func TestDiscoverAndValidateJWTConfig(t *testing.T) {
 	// Test case for when the server is down (no mock server running).
 	t.Run("Failure - Server is Down", func(t *testing.T) {
 		// Pass a non-existent URL.
-		_, err := DiscoverAndValidateJWTConfig("http://localhost:9999", "RS256", logger) // CHANGED
+		_, err := middleware.DiscoverAndValidateJWTConfig("http://localhost:9999", middleware.RSA256, logger) // CHANGED
 		require.Error(t, err, "Expected an error for a down server but got none")
 	})
 }
