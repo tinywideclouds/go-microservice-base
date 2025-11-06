@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"log/slog" // IMPORTED
 	"net/http"
 	"strings"
 	"time"
@@ -59,7 +60,7 @@ func NoopAuth(enabled bool, staticUserID string) func(http.Handler) http.Handler
 // NewJWKSAuthMiddleware is the modern, secure constructor for creating JWT authentication middleware.
 // It validates asymmetric RS256 tokens by fetching public keys from a JWKS endpoint.
 // This should be the default choice for all new services.
-func NewJWKSAuthMiddleware(jwksURL string) (func(http.Handler) http.Handler, error) {
+func NewJWKSAuthMiddleware(jwksURL string, logger *slog.Logger) (func(http.Handler) http.Handler, error) { // CHANGED
 	// Create a new JWK cache that will automatically fetch and refresh the keys.
 	// This is done once on startup for efficiency.
 	cache := jwk.NewCache(context.Background())
@@ -79,12 +80,14 @@ func NewJWKSAuthMiddleware(jwksURL string) (func(http.Handler) http.Handler, err
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
+				logger.Debug("Auth: Failed. Missing Authorization header") // ADDED
 				response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Missing Authorization header")
 				return
 			}
 
 			tokenString, found := strings.CutPrefix(authHeader, "Bearer ")
 			if !found {
+				logger.Debug("Auth: Failed. Invalid token format, missing 'Bearer ' prefix.", "header", authHeader) // ADDED
 				response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Invalid token format")
 				return
 			}
@@ -120,6 +123,7 @@ func NewJWKSAuthMiddleware(jwksURL string) (func(http.Handler) http.Handler, err
 			token, err := jwt.Parse(tokenString, keyFunc, jwt.WithValidMethods([]string{"RS256"}))
 
 			if err != nil {
+				logger.Debug("Auth: Failed. Token parsing/validation error", "err", err, "token", tokenString) // ADDED
 				response.WriteJSONError(w, http.StatusUnauthorized, fmt.Sprintf("Unauthorized: Invalid token (%s)", err.Error()))
 				return
 			}
@@ -127,20 +131,23 @@ func NewJWKSAuthMiddleware(jwksURL string) (func(http.Handler) http.Handler, err
 			if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 				userID, ok := claims["sub"].(string)
 				if !ok || userID == "" {
+					logger.Debug("Auth: Failed. Token valid but 'sub' claim is missing or empty.", "claims", claims) // ADDED
 					response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Invalid user ID in token")
 					return
 				}
 
+				logger.Debug("Auth: Success", "user", userID) // ADDED
 				ctx := context.WithValue(r.Context(), userContextKey, userID)
 				next.ServeHTTP(w, r.WithContext(ctx))
 			} else {
+				logger.Debug("Auth: Failed. Token claims were invalid or token was not valid", "claims", claims) // ADDED
 				response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Invalid token claims")
 			}
 		})
 	}, nil
 }
 
-func NewJWKSWebsocketAuthMiddleware(jwksURL string) (func(http.Handler) http.Handler, error) {
+func NewJWKSWebsocketAuthMiddleware(jwksURL string, logger *slog.Logger) (func(http.Handler) http.Handler, error) { // CHANGED
 	// Create a new, *separate* JWK cache for this middleware.
 	// This avoids refactoring and keeps the changes isolated.
 	cache := jwk.NewCache(context.Background())
@@ -160,6 +167,7 @@ func NewJWKSWebsocketAuthMiddleware(jwksURL string) (func(http.Handler) http.Han
 			// --- The *ONLY* logic change is here ---
 			tokenString := r.Header.Get("Sec-WebSocket-Protocol")
 			if tokenString == "" {
+				logger.Debug("WS Auth: Failed. Missing Sec-WebSocket-Protocol header.") // ADDED
 				response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Missing Sec-WebSocket-Protocol header")
 				return
 			}
@@ -187,6 +195,7 @@ func NewJWKSWebsocketAuthMiddleware(jwksURL string) (func(http.Handler) http.Han
 
 			token, err := jwt.Parse(tokenString, keyFunc, jwt.WithValidMethods([]string{"RS256"}))
 			if err != nil {
+				logger.Debug("WS Auth: Failed. Token parsing/validation error", "err", err, "token", tokenString) // ADDED
 				response.WriteJSONError(w, http.StatusUnauthorized, fmt.Sprintf("Unauthorized: Invalid token (%s)", err.Error()))
 				return
 			}
@@ -194,12 +203,15 @@ func NewJWKSWebsocketAuthMiddleware(jwksURL string) (func(http.Handler) http.Han
 			if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 				userID, ok := claims["sub"].(string)
 				if !ok || userID == "" {
+					logger.Debug("WS Auth: Failed. Token valid but 'sub' claim is missing or empty", "claims", claims) // ADDED
 					response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Invalid user ID in token")
 					return
 				}
+				logger.Debug("WS Auth: Success", "user", userID) // ADDED
 				ctx := ContextWithUserID(r.Context(), userID)
 				next.ServeHTTP(w, r.WithContext(ctx))
 			} else {
+				logger.Debug("WS Auth: Failed. Token claims were invalid or token was not valid", "claims", claims) // ADDED
 				response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Invalid token claims")
 			}
 		})
@@ -210,17 +222,19 @@ func NewJWKSWebsocketAuthMiddleware(jwksURL string) (func(http.Handler) http.Han
 // This pattern is less secure as it requires sharing the secret with all services.
 // It is retained for backward compatibility only and should NOT be used for new services.
 // Use NewJWKSAuthMiddleware instead.
-func NewLegacySharedSecretAuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
+func NewLegacySharedSecretAuthMiddleware(jwtSecret string, logger *slog.Logger) func(http.Handler) http.Handler { // CHANGED
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
+				logger.Debug("Auth (Legacy): Failed. Missing Authorization header") // ADDED
 				response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Missing Authorization header")
 				return
 			}
 
 			tokenString, found := strings.CutPrefix(authHeader, "Bearer ")
 			if !found {
+				logger.Debug("Auth (Legacy): Failed. Invalid token format, missing 'Bearer ' prefix.", "header", authHeader) // ADDED
 				response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Invalid token format")
 				return
 			}
@@ -233,6 +247,7 @@ func NewLegacySharedSecretAuthMiddleware(jwtSecret string) func(http.Handler) ht
 			})
 
 			if err != nil {
+				logger.Debug("Auth (Legacy): Failed. Token parsing/validation error", "err", err, "token", tokenString) // ADDED
 				response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Invalid token")
 				return
 			}
@@ -240,13 +255,16 @@ func NewLegacySharedSecretAuthMiddleware(jwtSecret string) func(http.Handler) ht
 			if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 				userID, ok := claims["sub"].(string)
 				if !ok || userID == "" {
+					logger.Debug("Auth (Legacy): Failed. Token valid but 'sub' claim is missing or empty", "claims", claims) // ADDED
 					response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Invalid user ID in token")
 					return
 				}
 
+				logger.Debug("Auth (Legacy): Success", "user", userID) // ADDED
 				ctx := context.WithValue(r.Context(), userContextKey, userID)
 				next.ServeHTTP(w, r.WithContext(ctx))
 			} else {
+				logger.Debug("Auth (Legacy): Failed. Token claims were invalid or token was not valid", "claims", claims) // ADDED
 				response.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: Invalid token claims")
 			}
 		})

@@ -2,11 +2,12 @@ package middleware
 
 import (
 	"io"
+	"log/slog" // IMPORTED
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/rs/zerolog"
+	// "github.com/rs/zerolog" // REMOVED
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,7 +82,7 @@ func TestDiscoverAndValidateJWTConfig(t *testing.T) {
 	}
 
 	// Create a logger that discards output to keep test logs clean.
-	logger := zerolog.New(io.Discard)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil)) // CHANGED
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -90,7 +91,7 @@ func TestDiscoverAndValidateJWTConfig(t *testing.T) {
 			defer server.Close()
 
 			// Call the function under test, pointing it at our mock server.
-			jwksURI, err := DiscoverAndValidateJWTConfig(server.URL, tc.requiredAlg, logger)
+			jwksURI, err := DiscoverAndValidateJWTConfig(server.URL, tc.requiredAlg, logger) // CHANGED
 
 			// Use testify/require for clean and readable assertions.
 			if tc.expectErr {
@@ -105,7 +106,7 @@ func TestDiscoverAndValidateJWTConfig(t *testing.T) {
 	// Test case for when the server is down (no mock server running).
 	t.Run("Failure - Server is Down", func(t *testing.T) {
 		// Pass a non-existent URL.
-		_, err := DiscoverAndValidateJWTConfig("http://localhost:9999", "RS256", logger)
+		_, err := DiscoverAndValidateJWTConfig("http://localhost:9999", "RS256", logger) // CHANGED
 		require.Error(t, err, "Expected an error for a down server but got none")
 	})
 }

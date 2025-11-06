@@ -3,9 +3,9 @@ package response
 
 import (
 	"encoding/json"
+	"log/slog" // IMPORTED
 	"net/http"
-
-	"github.com/rs/zerolog/log"
+	// "github.com/rs/zerolog/log" // REMOVED
 )
 
 // APIError represents a standard JSON error response.
@@ -26,7 +26,7 @@ func WriteJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
 	if err != nil {
 		// Log the error but don't try to write another response,
 		// as the headers have already been sent.
-		log.Error().Err(err).Msg("Failed to write JSON response")
+		slog.Error("Failed to write JSON response", "err", err) // CHANGED
 	}
 }
 

@@ -97,7 +97,8 @@ func TestJWKSAuthMiddleware(t *testing.T) {
 	defer mockServer.Close()
 
 	// 3. Create the middleware, pointing it to our mock server.
-	jwtMiddleware, err := middleware.NewJWKSAuthMiddleware(mockServer.URL)
+	logger := newTestLogger()                                                      // ADDED
+	jwtMiddleware, err := middleware.NewJWKSAuthMiddleware(mockServer.URL, logger) // CHANGED
 	require.NoError(t, err, "Middleware should be created successfully")
 
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -168,7 +169,8 @@ func TestJWKSWebsocketAuthMiddleware(t *testing.T) {
 	defer mockServer.Close()
 
 	// 3. Create the *NEW* middleware, pointing it to our mock server.
-	wsMiddleware, err := middleware.NewJWKSWebsocketAuthMiddleware(mockServer.URL)
+	logger := newTestLogger()                                                              // ADDED
+	wsMiddleware, err := middleware.NewJWKSWebsocketAuthMiddleware(mockServer.URL, logger) // CHANGED
 	require.NoError(t, err, "WebSocket middleware should be created successfully")
 
 	// 4. Create the dummy handler
@@ -239,7 +241,8 @@ func TestLegacySharedSecretAuthMiddleware(t *testing.T) {
 		_, _ = fmt.Fprint(w, "OK")
 	})
 
-	jwtMiddleware := middleware.NewLegacySharedSecretAuthMiddleware(testLegacySecret)
+	logger := newTestLogger()                                                                 // ADDED
+	jwtMiddleware := middleware.NewLegacySharedSecretAuthMiddleware(testLegacySecret, logger) // CHANGED
 	protectedHandler := jwtMiddleware(testHandler)
 
 	t.Run("Success - Valid HS256 Token", func(t *testing.T) {

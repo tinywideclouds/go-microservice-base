@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog" // IMPORTED
 	"net"
 	"net/http"
 	"strings"
@@ -12,7 +13,7 @@ import (
 	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/rs/zerolog"
+	// "github.com/rs/zerolog" // REMOVED
 )
 
 // BaseConfig holds common configuration fields for all services.
@@ -37,8 +38,8 @@ type Service interface {
 
 // BaseServer provides common functionalities for microservice servers.
 type BaseServer struct {
-	Logger     zerolog.Logger
-	HTTPPort   string // The listen address, e.g., ":8080"
+	Logger     *slog.Logger // CHANGED
+	HTTPPort   string       // The listen address, e.g., ":8080"
 	httpServer *http.Server
 	mux        *http.ServeMux
 	actualAddr string
@@ -49,7 +50,7 @@ type BaseServer struct {
 }
 
 // NewBaseServer creates and initializes a new BaseServer.
-func NewBaseServer(logger zerolog.Logger, httpPort string) *BaseServer {
+func NewBaseServer(logger *slog.Logger, httpPort string) *BaseServer { // CHANGED
 	mux := http.NewServeMux()
 
 	listenAddr := httpPort
@@ -95,9 +96,9 @@ func (s *BaseServer) SetReadyChannel(ch chan struct{}) {
 func (s *BaseServer) SetReady(ready bool) {
 	s.isReady.Store(ready)
 	if ready {
-		s.Logger.Info().Msg("Service has been marked as READY.")
+		s.Logger.Info("Service has been marked as READY.") // CHANGED
 	} else {
-		s.Logger.Warn().Msg("Service has been marked as NOT READY.")
+		s.Logger.Warn("Service has been marked as NOT READY.") // CHANGED
 	}
 }
 
@@ -113,29 +114,30 @@ func (s *BaseServer) Start() error {
 	s.actualAddr = listener.Addr().String()
 	s.mu.Unlock()
 
-	s.Logger.Info().Str("address", s.actualAddr).Msg("HTTP server starting to listen")
+	s.Logger.Info("HTTP server starting to listen", "address", s.actualAddr) // CHANGED
 
 	if s.readyChan != nil {
+		s.Logger.Debug("Closing ready channel to signal listener is active.") // --- ADDED THIS LOG ---
 		close(s.readyChan)
 	}
 
 	if err := s.httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		s.Logger.Error().Err(err).Msg("HTTP server failed")
+		s.Logger.Error("HTTP server failed", "err", err) // CHANGED
 		return err
 	}
 
-	s.Logger.Info().Msg("HTTP server has stopped listening.")
+	s.Logger.Info("HTTP server has stopped listening.") // CHANGED
 	return nil
 }
 
 // Shutdown gracefully stops the HTTP server.
 func (s *BaseServer) Shutdown(ctx context.Context) error {
-	s.Logger.Info().Msg("Shutting down HTTP server...")
+	s.Logger.Info("Shutting down HTTP server...") // CHANGED
 	if err := s.httpServer.Shutdown(ctx); err != nil {
-		s.Logger.Error().Err(err).Msg("Error during HTTP server shutdown.")
+		s.Logger.Error("Error during HTTP server shutdown.", "err", err) // CHANGED
 		return err
 	}
-	s.Logger.Info().Msg("HTTP server stopped.")
+	s.Logger.Info("HTTP server stopped.") // CHANGED
 	return nil
 }
 
@@ -169,6 +171,10 @@ func (s *BaseServer) readyzHandler(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("READY"))
 		return
 	}
+
+	// --- ADDED THIS LOG ---
+	s.Logger.Debug("Readiness probe failed: service is not ready.")
+
 	w.WriteHeader(http.StatusServiceUnavailable)
 	_, _ = w.Write([]byte("NOT READY"))
 }

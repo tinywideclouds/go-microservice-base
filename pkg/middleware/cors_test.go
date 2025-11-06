@@ -1,6 +1,8 @@
 package middleware_test
 
 import (
+	"io"       // IMPORTED
+	"log/slog" // IMPORTED
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,12 +11,18 @@ import (
 	"github.com/tinywideclouds/go-microservice-base/pkg/middleware"
 )
 
+// newTestLogger creates a discard logger for tests.
+func newTestLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 func TestCorsMiddleware_Roles(t *testing.T) {
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
 	baseOrigins := []string{"https://safe-domain.com"}
+	logger := newTestLogger() // ADDED
 
 	testCases := []struct {
 		name                   string
@@ -58,7 +66,7 @@ func TestCorsMiddleware_Roles(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
-			corsMiddleware := middleware.NewCorsMiddleware(tc.config)
+			corsMiddleware := middleware.NewCorsMiddleware(tc.config, logger) // CHANGED
 			handlerWithCors := corsMiddleware(testHandler)
 
 			req := httptest.NewRequest(http.MethodOptions, "/", nil)
@@ -82,12 +90,13 @@ func TestCorsMiddleware_OriginLogic(t *testing.T) {
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	logger := newTestLogger() // ADDED
 
 	corsCfg := middleware.CorsConfig{
 		AllowedOrigins: []string{"http://localhost:3000"},
 		Role:           middleware.CorsRoleDefault,
 	}
-	corsMiddleware := middleware.NewCorsMiddleware(corsCfg)
+	corsMiddleware := middleware.NewCorsMiddleware(corsCfg, logger) // CHANGED
 	handlerWithCors := corsMiddleware(testHandler)
 
 	t.Run("Disallowed Origin", func(t *testing.T) {

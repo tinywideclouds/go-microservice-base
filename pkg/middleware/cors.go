@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log/slog" // IMPORTED
 	"net/http"
 )
 
@@ -26,7 +27,7 @@ type CorsConfig struct {
 }
 
 // NewCorsMiddleware creates a new CORS middleware with the specified configuration.
-func NewCorsMiddleware(cfg CorsConfig) func(http.Handler) http.Handler {
+func NewCorsMiddleware(cfg CorsConfig, logger *slog.Logger) func(http.Handler) http.Handler { // CHANGED
 	// Create a map for fast origin lookups.
 	allowedOrigins := make(map[string]bool)
 	for _, origin := range cfg.AllowedOrigins {
@@ -44,13 +45,19 @@ func NewCorsMiddleware(cfg CorsConfig) func(http.Handler) http.Handler {
 		allowedMethods = "POST, GET, OPTIONS"
 	}
 
+	logger.Debug("CORS middleware configured", "allowed_methods", allowedMethods, "allowed_origins", cfg.AllowedOrigins) // ADDED
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
+			logger.Debug("CORS: Checking request", "origin", origin, "method", r.Method) // ADDED
 
 			// Only set the Allow-Origin header if the request origin is in our allowed list.
 			if allowedOrigins[origin] {
+				logger.Debug("CORS: Origin allowed", "origin", origin) // ADDED
 				w.Header().Set("Access-Control-Allow-Origin", origin)
+			} else if origin != "" {
+				logger.Debug("CORS: Origin denied", "origin", origin) // ADDED
 			}
 
 			w.Header().Set("Access-Control-Allow-Methods", allowedMethods)
@@ -59,6 +66,7 @@ func NewCorsMiddleware(cfg CorsConfig) func(http.Handler) http.Handler {
 
 			// Handle preflight (OPTIONS) requests.
 			if r.Method == "OPTIONS" {
+				logger.Debug("CORS: Handling preflight request") // ADDED
 				w.WriteHeader(http.StatusOK)
 				return
 			}
