@@ -23,9 +23,7 @@ func WriteJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
 
 	err := json.NewEncoder(w).Encode(payload)
 	if err != nil {
-		// Log the error but don't try to write another response,
-		// as the headers have already been sent.
-		slog.Error("Failed to write JSON response", "err", err) // CHANGED
+		slog.Error("Failed to write JSON response", "err", err)
 	}
 }
 

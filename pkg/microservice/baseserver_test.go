@@ -4,21 +4,20 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log/slog" // IMPORTED
+	"log/slog"
 	"net/http"
 	"sync"
 	"testing"
 	"time"
 
-	// "github.com/rs/zerolog" // REMOVED
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tinywideclouds/go-microservice-base/pkg/microservice"
 )
 
 func TestBaseServer_LifecycleAndProbes(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil)) // CHANGED
-	server := microservice.NewBaseServer(logger, ":0")       // CHANGED
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := microservice.NewBaseServer(logger, ":0")
 
 	var wg sync.WaitGroup
 	wg.Add(1)

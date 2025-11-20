@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"log/slog" // IMPORTED
+	"log/slog"
 	"net/http"
 )
 
@@ -20,53 +20,56 @@ const (
 // CorsConfig holds the configuration for the CORS middleware.
 type CorsConfig struct {
 	// AllowedOrigins is a list of domains that are allowed to make cross-origin requests.
-	// Example: []string{"http://localhost:4200", "https://my-frontend.com"}
+	// Note: This library forces Access-Control-Allow-Credentials=true.
+	// Therefore, usage of the wildcard "*" origin is insecure and prohibited.
 	AllowedOrigins []string
 	// Role determines the set of allowed HTTP methods. Defaults to CorsRoleDefault.
 	Role CorsRole
 }
 
 // NewCorsMiddleware creates a new CORS middleware with the specified configuration.
-func NewCorsMiddleware(cfg CorsConfig, logger *slog.Logger) func(http.Handler) http.Handler { // CHANGED
-	// Create a map for fast origin lookups.
+// It will panic if the configuration is insecure (e.g., using wildcard origins with credentials).
+func NewCorsMiddleware(cfg CorsConfig, logger *slog.Logger) func(http.Handler) http.Handler {
 	allowedOrigins := make(map[string]bool)
 	for _, origin := range cfg.AllowedOrigins {
+		if origin == "*" {
+			// Since this middleware forces Allow-Credentials=true, a wildcard origin
+			// is strictly prohibited by browser standards and represents a security flaw.
+			panic("microservice/cors: insecure configuration detected. Cannot use wildcard '*' origin with credentials enabled.")
+		}
 		allowedOrigins[origin] = true
 	}
 
-	// Determine the allowed methods string based on the configured role.
 	var allowedMethods string
 	switch cfg.Role {
 	case CorsRoleEditor:
 		allowedMethods = "POST, GET, OPTIONS, PUT, PATCH"
 	case CorsRoleAdmin:
 		allowedMethods = "POST, GET, OPTIONS, PUT, PATCH, DELETE"
-	default: // Includes CorsRoleDefault
+	default:
 		allowedMethods = "POST, GET, OPTIONS"
 	}
 
-	logger.Debug("CORS middleware configured", "allowed_methods", allowedMethods, "allowed_origins", cfg.AllowedOrigins) // ADDED
+	logger.Debug("CORS middleware configured", "allowed_methods", allowedMethods, "allowed_origins", cfg.AllowedOrigins)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			logger.Debug("CORS: Checking request", "origin", origin, "method", r.Method) // ADDED
+			logger.Debug("CORS: Checking request", "origin", origin, "method", r.Method)
 
-			// Only set the Allow-Origin header if the request origin is in our allowed list.
 			if allowedOrigins[origin] {
-				logger.Debug("CORS: Origin allowed", "origin", origin) // ADDED
+				logger.Debug("CORS: Origin allowed", "origin", origin)
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 			} else if origin != "" {
-				logger.Debug("CORS: Origin denied", "origin", origin) // ADDED
+				logger.Debug("CORS: Origin denied", "origin", origin)
 			}
 
 			w.Header().Set("Access-Control-Allow-Methods", allowedMethods)
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 
-			// Handle preflight (OPTIONS) requests.
 			if r.Method == "OPTIONS" {
-				logger.Debug("CORS: Handling preflight request") // ADDED
+				logger.Debug("CORS: Handling preflight request")
 				w.WriteHeader(http.StatusOK)
 				return
 			}

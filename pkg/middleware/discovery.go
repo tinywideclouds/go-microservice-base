@@ -16,14 +16,12 @@ type OIDCDiscoveryConfig struct {
 
 // DiscoverAndValidateJWTConfig fetches metadata from an OIDC-compatible discovery endpoint,
 // validates that a required JWT signing algorithm is supported, and returns the discovered JWKS URI.
-// This is a critical startup check for any microservice acting as a resource server.
 func DiscoverAndValidateJWTConfig(identityServiceURL string, requiredAlg JWTSigningMethod, logger *slog.Logger) (string, error) {
 	logger.Info("Discovering configuration from identity service", "identity_service_url", identityServiceURL)
 	metadataURL := fmt.Sprintf("%s/.well-known/oauth-authorization-server", identityServiceURL)
 
 	resp, err := http.Get(metadataURL)
 	if err != nil {
-		// --- ADDED THIS LOG ---
 		logger.Error("Failed to fetch OIDC metadata", "url", metadataURL, "err", err)
 		return "", fmt.Errorf("failed to fetch metadata from %s: %w", metadataURL, err)
 	}
@@ -32,14 +30,12 @@ func DiscoverAndValidateJWTConfig(identityServiceURL string, requiredAlg JWTSign
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		// --- ADDED THIS LOG ---
 		logger.Warn("Received non-200 status from OIDC metadata endpoint", "url", metadataURL, "status_code", resp.StatusCode)
 		return "", fmt.Errorf("received non-200 status code (%d) from metadata endpoint", resp.StatusCode)
 	}
 
 	var config OIDCDiscoveryConfig
 	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
-		// --- ADDED THIS LOG ---
 		logger.Error("Failed to decode OIDC metadata", "url", metadataURL, "err", err)
 		return "", fmt.Errorf("failed to decode identity service metadata: %w", err)
 	}
@@ -53,7 +49,6 @@ func DiscoverAndValidateJWTConfig(identityServiceURL string, requiredAlg JWTSign
 	}
 
 	if !isAlgSupported {
-		// --- ADDED THIS LOG ---
 		logger.Warn(
 			"Identity service does not support required JWT algorithm",
 			"required_alg", requiredAlg,

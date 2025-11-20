@@ -1,8 +1,8 @@
 package middleware_test
 
 import (
-	"io"       // IMPORTED
-	"log/slog" // IMPORTED
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,7 +22,7 @@ func TestCorsMiddleware_Roles(t *testing.T) {
 	})
 
 	baseOrigins := []string{"https://safe-domain.com"}
-	logger := newTestLogger() // ADDED
+	logger := newTestLogger()
 
 	testCases := []struct {
 		name                   string
@@ -66,7 +66,7 @@ func TestCorsMiddleware_Roles(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
-			corsMiddleware := middleware.NewCorsMiddleware(tc.config, logger) // CHANGED
+			corsMiddleware := middleware.NewCorsMiddleware(tc.config, logger)
 			handlerWithCors := corsMiddleware(testHandler)
 
 			req := httptest.NewRequest(http.MethodOptions, "/", nil)
@@ -85,18 +85,17 @@ func TestCorsMiddleware_Roles(t *testing.T) {
 	}
 }
 
-// This test remains to validate the origin-checking logic specifically.
 func TestCorsMiddleware_OriginLogic(t *testing.T) {
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	logger := newTestLogger() // ADDED
+	logger := newTestLogger()
 
 	corsCfg := middleware.CorsConfig{
 		AllowedOrigins: []string{"http://localhost:3000"},
 		Role:           middleware.CorsRoleDefault,
 	}
-	corsMiddleware := middleware.NewCorsMiddleware(corsCfg, logger) // CHANGED
+	corsMiddleware := middleware.NewCorsMiddleware(corsCfg, logger)
 	handlerWithCors := corsMiddleware(testHandler)
 
 	t.Run("Disallowed Origin", func(t *testing.T) {
@@ -110,4 +109,16 @@ func TestCorsMiddleware_OriginLogic(t *testing.T) {
 		// CRITICAL: The Allow-Origin header should NOT be set for disallowed origins.
 		assert.Empty(t, rr.Header().Get("Access-Control-Allow-Origin"))
 	})
+}
+
+func TestCorsMiddleware_PanicOnWildcard(t *testing.T) {
+	logger := newTestLogger()
+	corsCfg := middleware.CorsConfig{
+		AllowedOrigins: []string{"*"},
+		Role:           middleware.CorsRoleDefault,
+	}
+
+	assert.Panics(t, func() {
+		middleware.NewCorsMiddleware(corsCfg, logger)
+	}, "Middleware should panic when configured with insecure wildcard origin")
 }
